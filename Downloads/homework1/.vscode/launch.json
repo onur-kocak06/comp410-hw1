@@ -1,0 +1,13 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "C/C++ Runner: Debug Session",
+      "type": "lldb",
+      "request": "launch",
+      "args": [],
+      "cwd": "/Users/onurkocak/Downloads/homework1",
+      "program": "/Users/onurkocak/Downloads/homework1/build/Debug/outDebug"
+    }
+  ]
+}
