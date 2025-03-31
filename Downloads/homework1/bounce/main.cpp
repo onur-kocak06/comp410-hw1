@@ -8,8 +8,9 @@ float posX = -0.9f, posY = 0.9f; // Start at top-left
 float velocityX = 0.005f, velocityY = 0.0f; // initial velocity
 float gravity = -0.001f;
 float damping = 0.9f; // reduce for a less bouncy ball
-bool isSphere = false;
 bool isWireframe = false;
+enum ObjectType { CUBE, SPHERE, BUNNY };
+    ObjectType currentObject = CUBE; // Default
 
 // Ball color
 bool isRed = true;
@@ -45,6 +46,68 @@ void processInput(GLFWwindow* window);
 void drawObject();
 void mouseButtonCallback(GLFWwindow* window, int button, int action, int mods);
 
+std::vector<float> bunnyVertices;
+std::vector<unsigned int> bunnyIndices;
+unsigned int bunnyVAO, bunnyVBO, bunnyEBO;
+
+
+void loadBunnyModel(const std::string& filename) {
+    std::ifstream file(filename);
+    if (!file.is_open()) {
+        std::cerr << "Failed to open " << filename << std::endl;
+        return;
+    }
+
+    std::string line;
+    file >> line; // Read "OFF"
+    
+    int vertexCount, faceCount, edgeCount;
+    file >> vertexCount >> faceCount >> edgeCount;
+
+    // Read vertices
+    bunnyVertices.resize(vertexCount * 3);
+    for (int i = 0; i < vertexCount; ++i) {
+        file >> bunnyVertices[i * 3] >> bunnyVertices[i * 3 + 1] >> bunnyVertices[i * 3 + 2];
+    }
+
+    // Read faces
+    for (int i = 0; i < faceCount; ++i) {
+        int n, v1, v2, v3;
+        file >> n >> v1 >> v2 >> v3; // Assuming triangular faces
+        bunnyIndices.push_back(v1);
+        bunnyIndices.push_back(v2);
+        bunnyIndices.push_back(v3);
+    }
+    file.close();
+
+    // Normalize the bunny (scale & center it)
+    for (size_t i = 0; i < bunnyVertices.size(); i += 3) {
+        bunnyVertices[i] *= 0.01f;    // Scale down
+        bunnyVertices[i + 1] *= 0.01f;
+        bunnyVertices[i + 2] *= 0.01f;
+    }
+
+    // Generate VAO/VBO
+    glGenVertexArrays(1, &bunnyVAO);
+    glGenBuffers(1, &bunnyVBO);
+    glGenBuffers(1, &bunnyEBO);
+
+    glBindVertexArray(bunnyVAO);
+    glBindBuffer(GL_ARRAY_BUFFER, bunnyVBO);
+    glBufferData(GL_ARRAY_BUFFER, bunnyVertices.size() * sizeof(float), bunnyVertices.data(), GL_STATIC_DRAW);
+
+    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, bunnyEBO);
+    glBufferData(GL_ELEMENT_ARRAY_BUFFER, bunnyIndices.size() * sizeof(unsigned int), bunnyIndices.data(), GL_STATIC_DRAW);
+
+    glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 3 * sizeof(float), (void*)0);
+    glEnableVertexAttribArray(0);
+
+    glBindVertexArray(0);
+}
+
+
+
+
 int main() {
     glfwInit();
     glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 3);
@@ -60,7 +123,7 @@ int main() {
     glViewport(0, 0, WIDTH, HEIGHT);
 
     createShader();
-
+    loadBunnyModel("bunny.off");
     while (!glfwWindowShouldClose(window)) {
         processInput(window);
 
@@ -108,15 +171,18 @@ void createShader() {
 // Function declarations
 void drawCube();
 void drawSphere();
+void drawBunny();
 std::vector<float> generateSphereVertices(float radius, unsigned int sectorCount, unsigned int stackCount);
 
 void drawObject() {
     glUseProgram(shaderProgram);
 
-    if (isSphere) {
-        drawSphere();
-    } else {
+    if (currentObject == CUBE) {
         drawCube();
+    } else if (currentObject == SPHERE) {
+        drawSphere();
+    } else if (currentObject == BUNNY) {
+        drawBunny();
     }
 }
 
@@ -159,6 +225,31 @@ void drawCube() {
     glPolygonMode(GL_FRONT_AND_BACK, isWireframe ? GL_LINE : GL_FILL);
     glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, 0);
 
+    glBindVertexArray(0);
+}
+
+void drawBunny() {
+    glUseProgram(shaderProgram);
+    
+    glm::mat4 transform = glm::translate(glm::mat4(1.0f), glm::vec3(posX, posY, 0.0f));
+    
+    transform = glm::rotate(transform, glm::radians(90.0f), glm::vec3(0.0f, 1.0f, 0.0f)); 
+    transform = glm::rotate(transform, glm::radians(270.0f), glm::vec3(1.0f, 0.0f, 0.0f)); 
+
+
+    unsigned int transformLoc = glGetUniformLocation(shaderProgram, "transform");
+    glUniformMatrix4fv(transformLoc, 1, GL_FALSE, &transform[0][0]);
+
+    unsigned int colorLoc = glGetUniformLocation(shaderProgram, "color");
+    if(isRed){
+        glUniform3f(colorLoc, red.r, red.g, red.b);
+    } else {
+        glUniform3f(colorLoc, green.r, green.g, green.b);
+    }
+
+    glPolygonMode(GL_FRONT_AND_BACK, isWireframe ? GL_LINE : GL_FILL);
+    glBindVertexArray(bunnyVAO);
+    glDrawElements(GL_TRIANGLES, bunnyIndices.size(), GL_UNSIGNED_INT, 0);
     glBindVertexArray(0);
 }
 
@@ -262,6 +353,8 @@ void processInput(GLFWwindow* window) {
     }
 }
 void mouseButtonCallback(GLFWwindow* window, int button, int action, int mods) {
-    if (button == GLFW_MOUSE_BUTTON_RIGHT && action == GLFW_PRESS) isSphere = !isSphere;
+    if (button == GLFW_MOUSE_BUTTON_RIGHT && action == GLFW_PRESS) {
+        currentObject = static_cast<ObjectType>((currentObject + 1) % 3);
+    }
     if (button == GLFW_MOUSE_BUTTON_LEFT && action == GLFW_PRESS) isWireframe = !isWireframe;
 }
