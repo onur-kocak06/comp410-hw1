@@ -17,10 +17,11 @@ const char* vertexShaderSource = R"glsl(
 layout (location = 0) in vec3 aPos;
 layout (location = 1) in vec3 aColor;
 
-out vec3 ourColor;
 uniform mat4 model;
 uniform mat4 view;
 uniform mat4 projection;
+
+out vec3 ourColor;
 
 void main() {
     gl_Position = projection * view * model * vec4(aPos, 1.0);
@@ -37,6 +38,13 @@ void main() {
     FragColor = vec4(ourColor, 1.0);
 }
 )glsl";
+
+struct Cubelet {
+    glm::vec3 position;
+    int id;
+};
+
+std::vector<Cubelet> cubelets;
 
 void processInput(GLFWwindow* window) {
     if (glfwGetKey(window, GLFW_KEY_ESCAPE) == GLFW_PRESS)
@@ -107,15 +115,29 @@ void createCube(std::vector<float>& vertices, std::vector<unsigned int>& indices
             glm::vec3 pos = positions[faceIndices[f][i]];
             vertices.insert(vertices.end(), { pos.x, pos.y, pos.z, color.r, color.g, color.b });
         }
-        unsigned start = f * 4;
+        unsigned start = vertices.size() / 6 - 4;
         indices.insert(indices.end(), {
-            start, start+1, start+2,
-            start, start+2, start+3
+            start, start + 1, start + 2,
+            start, start + 2, start + 3
         });
     }
 }
 
 int main() {
+    // Generate cubelets
+    float offset = 0.7f;
+    int id = 0;
+    for (int x = -1; x <= 1; ++x) {
+        for (int y = -1; y <= 1; ++y) {
+            for (int z = -1; z <= 1; ++z) {
+                Cubelet c;
+                c.position = glm::vec3(x * offset, y * offset, z * offset);
+                c.id = id++;
+                cubelets.push_back(c);
+            }
+        }
+    }
+
     glfwInit();
     glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 3);
     glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 3);
@@ -127,30 +149,24 @@ int main() {
 
     unsigned int shaderProgram = createShaderProgram();
 
-    std::vector<float> vertices;
-    std::vector<unsigned int> indices;
+    std::vector<float> baseVertices;
+    std::vector<unsigned int> baseIndices;
+    createCube(baseVertices, baseIndices, glm::vec3(0.0f)); // centered at origin
 
-    for (int x = -1; x <= 1; ++x) {
-        for (int y = -1; y <= 1; ++y) {
-            for (int z = -1; z <= 1; ++z) {
-                createCube(vertices, indices, glm::vec3(x * 0.7f, y * 0.7f, z * 0.7f));
-            }
-        }
-    }
-
-    unsigned int VBO, VAO, EBO;
+    unsigned int VAO, VBO, EBO;
     glGenVertexArrays(1, &VAO);
     glGenBuffers(1, &VBO);
     glGenBuffers(1, &EBO);
 
     glBindVertexArray(VAO);
     glBindBuffer(GL_ARRAY_BUFFER, VBO);
-    glBufferData(GL_ARRAY_BUFFER, vertices.size() * sizeof(float), vertices.data(), GL_STATIC_DRAW);
+    glBufferData(GL_ARRAY_BUFFER, baseVertices.size() * sizeof(float), baseVertices.data(), GL_STATIC_DRAW);
     glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, EBO);
-    glBufferData(GL_ELEMENT_ARRAY_BUFFER, indices.size() * sizeof(unsigned int), indices.data(), GL_STATIC_DRAW);
+    glBufferData(GL_ELEMENT_ARRAY_BUFFER, baseIndices.size() * sizeof(unsigned int), baseIndices.data(), GL_STATIC_DRAW);
 
     glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 6 * sizeof(float), (void*)0);
     glEnableVertexAttribArray(0);
+
     glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, 6 * sizeof(float), (void*)(3 * sizeof(float)));
     glEnableVertexAttribArray(1);
 
@@ -161,18 +177,27 @@ int main() {
 
         glUseProgram(shaderProgram);
 
-        glm::mat4 model = glm::rotate(glm::mat4(1.0f), rotateX, glm::vec3(1.0f, 0.0f, 0.0f));
-        model = glm::rotate(model, rotateY, glm::vec3(0.0f, 1.0f, 0.0f));
+        glm::mat4 projection = glm::perspective(glm::radians(45.0f), (float)SCR_WIDTH / SCR_HEIGHT, 0.1f, 100.0f);
+        glm::mat4 view = glm::lookAt(
+            glm::vec3(4.0f, 3.0f, 6.0f),
+            glm::vec3(0.0f, 0.0f, 0.0f),
+            glm::vec3(0.0f, 1.0f, 0.0f)
+        );
 
-        glm::mat4 view = glm::translate(glm::mat4(1.0f), glm::vec3(0.0f, 0.0f, -8.0f));
-        glm::mat4 projection = glm::perspective(glm::radians(45.0f), (float)SCR_WIDTH/SCR_HEIGHT, 0.1f, 100.0f);
+        view = glm::rotate(view, rotateX, glm::vec3(1.0f, 0.0f, 0.0f));
+        view = glm::rotate(view, rotateY, glm::vec3(0.0f, 1.0f, 0.0f));
 
-        glUniformMatrix4fv(glGetUniformLocation(shaderProgram, "model"), 1, GL_FALSE, glm::value_ptr(model));
-        glUniformMatrix4fv(glGetUniformLocation(shaderProgram, "view"), 1, GL_FALSE, glm::value_ptr(view));
         glUniformMatrix4fv(glGetUniformLocation(shaderProgram, "projection"), 1, GL_FALSE, glm::value_ptr(projection));
+        glUniformMatrix4fv(glGetUniformLocation(shaderProgram, "view"), 1, GL_FALSE, glm::value_ptr(view));
 
         glBindVertexArray(VAO);
-        glDrawElements(GL_TRIANGLES, indices.size(), GL_UNSIGNED_INT, 0);
+
+        for (const Cubelet& c : cubelets) {
+            glm::mat4 model = glm::mat4(1.0f);
+            model = glm::translate(model, c.position);
+            glUniformMatrix4fv(glGetUniformLocation(shaderProgram, "model"), 1, GL_FALSE, glm::value_ptr(model));
+            glDrawElements(GL_TRIANGLES, baseIndices.size(), GL_UNSIGNED_INT, 0);
+        }
 
         glfwSwapBuffers(window);
         glfwPollEvents();
