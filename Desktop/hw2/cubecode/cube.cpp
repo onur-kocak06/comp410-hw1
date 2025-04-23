@@ -8,6 +8,7 @@
 #include <vector>
 #include <unordered_map>
 #include <cmath>
+#include <queue>
 
 const unsigned int SCR_WIDTH = 800;
 const unsigned int SCR_HEIGHT = 600;
@@ -59,10 +60,17 @@ float activeRotationDirection = 1.0f;
 bool isRotating = false;
 float currentAngle = 0.0f;
 const float targetAngle = glm::radians(90.0f);
-const float rotationSpeed = glm::radians(180.0f); // degrees per second
+float rotationSpeed = glm::radians(180.0f); // degrees per second
+const float originalSpeed = rotationSpeed;
 std::vector<int> rotatingIds;
 glm::vec3 activePivot = glm::vec3(0.0f);
 
+struct RotationCommand {
+    char axis;
+    float coord;
+    bool clockwise;
+};
+std::queue<RotationCommand> rotationQueue;
 
 void startRotation(char axis, float coord, bool clockwise) {
     if (isRotating) return;
@@ -106,7 +114,7 @@ void startRotation(char axis, float coord, bool clockwise) {
 
 void updateRotation(float dt) {
     // advance the animation
-    float step = rotationSpeed * dt;
+    float step = rotationSpeed * dt; 
     if (currentAngle + step >= targetAngle) {
         step = targetAngle - currentAngle;
         isRotating = false;
@@ -114,25 +122,67 @@ void updateRotation(float dt) {
     currentAngle += step;
 
     // build the tiny delta‐step around the correct axis
-    glm::mat4 rotStep = glm::rotate(glm::mat4(1), step * activeRotationDirection, activeRotationAxis);
+    glm::mat4 rotStep = glm::rotate(glm::mat4(1.0f), step * activeRotationDirection, activeRotationAxis);
 
     // apply it to each affected cubelet
     for (int id : rotatingIds) {
         Cubelet& c = cubelets[id];
-        c.transform = glm::translate(glm::mat4(1), activePivot) 
+
+        glm::vec3 activePivot = glm::vec3(0.0f);
+        if (activeRotationAxis == glm::vec3(1, 0, 0)) {
+            if (std::abs(c.originalPos.x - 0.7f) < 0.1f) activePivot.x = 0.7f;
+            else if (std::abs(c.originalPos.x + 0.7f) < 0.1f) activePivot.x = -0.7f;
+        } else if (activeRotationAxis == glm::vec3(0, 1, 0)) {
+            if (std::abs(c.originalPos.y - 0.7f) < 0.1f) activePivot.y = 0.7f;
+            else if (std::abs(c.originalPos.y + 0.7f) < 0.1f) activePivot.y = -0.7f;
+        } else if (activeRotationAxis == glm::vec3(0, 0, 1)) {
+            if (std::abs(c.originalPos.z - 0.7f) < 0.1f) activePivot.z = 0.7f;
+            else if (std::abs(c.originalPos.z + 0.7f) < 0.1f) activePivot.z = -0.7f;
+        }
+
+        c.transform = glm::translate(glm::mat4(1.0f), activePivot) 
                     * rotStep 
-                    * glm::translate(glm::mat4(1), -activePivot) 
+                    * glm::translate(glm::mat4(1.0f), -activePivot) 
                     * c.transform;
     }
 
     // once we hit 90°, finalize:
     if (!isRotating) {
         
+
         rotatingIds.clear();
+
+        // If there are queued rotations, start the next one
+        if (!rotationQueue.empty()) {
+            RotationCommand next = rotationQueue.front();
+            rotationQueue.pop();
+            startRotation(next.axis, next.coord, next.clockwise);
+        }
+        else{
+            rotationSpeed = originalSpeed;
+        }
         return;
+    }
+}
+
+void randomize(){
+    std::srand(static_cast<unsigned int>(std::time(nullptr)));
+    rotationSpeed = originalSpeed * 15; //slower would look better but takes too much time
+
+    for (int i = 0; i < 50; ++i) {
+        // Randomly choose axis: 0 for 'x', 1 for 'y'
+        char axis = (std::rand() % 2 == 0) ? 'x' : 'y';
+
+        // Randomly choose position: 0 for 0.7f, 1 for -0.7f
+        float direction = (std::rand() % 2 == 0) ? 0.7f : -0.7f;
+
+        rotationQueue.push({axis, direction, true});
+        startRotation(axis, direction, true);
+        
     }
     
 }
+
 void printUseInstractions(){
     printf("use the arrow keys to ratate the cube\n");
     printf("press \'W\' to rotate the top horizontal node\n");
@@ -163,16 +213,17 @@ void processInput(GLFWwindow* window) {
         startRotation('x', 0.7f, true);
     if (glfwGetKey(window, GLFW_KEY_A) == GLFW_PRESS && !isRotating)
         startRotation('x', -0.7f, true);
-        if (glfwGetKey(window, GLFW_KEY_H) == GLFW_PRESS) {
-            if (!hKeyPressed && !isRotating) {
-                printUseInstractions();
-                hKeyPressed = true;
+    if (glfwGetKey(window, GLFW_KEY_H) == GLFW_PRESS) {
+        if (!hKeyPressed && !isRotating) {
+            printUseInstractions();
+            hKeyPressed = true;
             }
         } else {
             hKeyPressed = false; // Reset when key is released
         }
-    if (glfwGetKey(window, GLFW_KEY_R) == GLFW_PRESS && !isRotating)
-        printf("i am suposed to randomize"); //TODO: implement randomizer
+    if (glfwGetKey(window, GLFW_KEY_R) == GLFW_PRESS && !isRotating){       
+        randomize();        
+    }
 }
 
 unsigned int compileShader(unsigned int type, const char* source) {
