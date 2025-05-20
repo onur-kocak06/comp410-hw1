@@ -223,7 +223,7 @@ int main() {
         model = glm::translate(model, glm::vec3(posX, posY, 0.0f));
 
         // Light direction
-        glm::vec3 lightDir = lightAttachedToObject ? glm::vec3(model * glm::vec4(0.0f, 0.0f, 1.0f, 0.0f)) : glm::vec3(0.0f, 0.0f, 1.0f);
+        glm::vec3 lightDir = lightAttachedToObject ? glm::vec3(model * glm::vec4(0.0f, 0.0f, 1.0f, 0.0f)) : glm::vec3(0.0f, -1.0f, 0.0f);
 
         // Activate shader
         glUseProgram(shaderProgram);
@@ -233,7 +233,7 @@ int main() {
         glUniformMatrix4fv(glGetUniformLocation(shaderProgram, "view"), 1, GL_FALSE, glm::value_ptr(view));
         glUniformMatrix4fv(glGetUniformLocation(shaderProgram, "projection"), 1, GL_FALSE, glm::value_ptr(projection));
         glUniform3fv(glGetUniformLocation(shaderProgram, "lightDirection"), 1, glm::value_ptr(lightDir));
-        glUniform1f(glGetUniformLocation(shaderProgram, "shininess"), useMetallic ? 128.0f : 32.0f);
+        glUniform1f(glGetUniformLocation(shaderProgram, "shininess"), useMetallic ? 16.0f : 4.0f);
         glUniform1i(glGetUniformLocation(shaderProgram, "toggleAmbient"), toggleAmbient ? 1 : 0);
         glUniform1i(glGetUniformLocation(shaderProgram, "toggleDiffuse"), toggleDiffuse ? 1 : 0);
         glUniform1i(glGetUniformLocation(shaderProgram, "toggleSpecular"), toggleSpecular ? 1 : 0);
@@ -412,6 +412,7 @@ if (glfwGetKey(window, GLFW_KEY_Q) == GLFW_PRESS)
     // Toggle shading mode: Gouraud / Phong
     if (glfwGetKey(window, GLFW_KEY_S) == GLFW_PRESS && !sKeyPressed) {
         useGouraud = !useGouraud;
+        std::cout << "useGouraud: " << (useGouraud ? "true" : "false") << "\n";
         sKeyPressed = true;
     }
     if (glfwGetKey(window, GLFW_KEY_S) == GLFW_RELEASE)
@@ -419,14 +420,18 @@ if (glfwGetKey(window, GLFW_KEY_Q) == GLFW_PRESS)
 
     // Toggle lighting components (ambient, diffuse, specular)
     if (glfwGetKey(window, GLFW_KEY_O) == GLFW_PRESS && !oKeyPressed) {
-        if (toggleAmbient && toggleDiffuse && toggleSpecular)
+        if (toggleAmbient && toggleDiffuse && toggleSpecular){
             toggleAmbient = false;
-        else if (!toggleAmbient && toggleDiffuse && toggleSpecular)
+            std::cout << "ambient turned off\n";}
+        else if (!toggleAmbient && toggleDiffuse && toggleSpecular){
             toggleDiffuse = false;
-        else if (!toggleAmbient && !toggleDiffuse && toggleSpecular)
+            std::cout << "diffuse turned off as well\n";}
+        else if (!toggleAmbient && !toggleDiffuse && toggleSpecular){
             toggleSpecular = false;
-        else
+            std::cout << "specular turned off as well\n";}
+        else{
             toggleAmbient = toggleDiffuse = toggleSpecular = true;
+            std::cout << "everything turned back on\n";}
         oKeyPressed = true;
     }
     if (glfwGetKey(window, GLFW_KEY_O) == GLFW_RELEASE)
@@ -435,6 +440,7 @@ if (glfwGetKey(window, GLFW_KEY_Q) == GLFW_PRESS)
     // Toggle light mode: fixed or object-bound
     if (glfwGetKey(window, GLFW_KEY_L) == GLFW_PRESS && !lKeyPressed) {
         lightAttachedToObject = !lightAttachedToObject;
+        std::cout << "lightAttachedToObject: " << (lightAttachedToObject ? "true" : "false") << "\n";
         lKeyPressed = true;
     }
     if (glfwGetKey(window, GLFW_KEY_L) == GLFW_RELEASE)
@@ -443,6 +449,7 @@ if (glfwGetKey(window, GLFW_KEY_Q) == GLFW_PRESS)
     // Toggle material type: plastic or metallic
     if (glfwGetKey(window, GLFW_KEY_M) == GLFW_PRESS && !mKeyPressed) {
         useMetallic = !useMetallic;
+        std::cout << "useMetallic: " << (useMetallic ? "true" : "false") << "\n";
         mKeyPressed = true;
     }
     if (glfwGetKey(window, GLFW_KEY_M) == GLFW_RELEASE)
