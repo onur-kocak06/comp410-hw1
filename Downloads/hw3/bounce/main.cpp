@@ -8,7 +8,8 @@ float posX = -0.9f, posY = 0.9f;
 float velocityX = 0.005f, velocityY = 0.0f;
 float gravity = -0.001f;
 float damping = 0.9f;
-
+float velocityXsaved, velocityYsaved, gravitySaved = 0;
+bool isPaused= false;
 // Rendering mode
 bool isWireframe = false;
 
@@ -26,6 +27,9 @@ static bool zKeyPressed = false;
 static bool wKeyPressed = false;
 static bool tKeyPressed = false;
 static bool iKeyPressed = false;
+static bool rKeyPressed = false;
+static bool pKeyPressed = false;
+static bool hKeyPressed = false;
 
 // Shading and lighting toggles
 bool useGouraud = false;
@@ -183,8 +187,8 @@ int main() {
         processInput(window);
 
         velocityY += gravity;
-        //posY += velocityY;
-        //posX += velocityX;
+        posY += velocityY;
+        posX += velocityX;
 
         // Bounce on bottom boundary
         if (posY <= -0.9f) {
@@ -332,11 +336,8 @@ if (zoom > 10.0f) zoom = 10.0f;
 
 // Keyboard input
 void processInput(GLFWwindow* window) {
-if (glfwGetKey(window, GLFW_KEY_ESCAPE) == GLFW_PRESS)
-glfwSetWindowShouldClose(window, true);
-
-if (glfwGetKey(window, GLFW_KEY_ESCAPE) == GLFW_PRESS)
-        glfwSetWindowShouldClose(window, true);
+if (glfwGetKey(window, GLFW_KEY_Q) == GLFW_PRESS)
+    glfwSetWindowShouldClose(window, true);
 
     // Toggle shading mode: Gouraud / Phong
     if (glfwGetKey(window, GLFW_KEY_S) == GLFW_PRESS && !sKeyPressed) {
@@ -411,4 +412,54 @@ if (glfwGetKey(window, GLFW_KEY_ESCAPE) == GLFW_PRESS)
     }
     if (glfwGetKey(window, GLFW_KEY_I) == GLFW_RELEASE)
         iKeyPressed = false;
+
+
+    if (glfwGetKey(window, GLFW_KEY_R) == GLFW_PRESS && !rKeyPressed) {
+        posX = -0.9f; 
+        posY = 0.9f; 
+        velocityY = 0.0f;
+        rKeyPressed = true;
+    }
+    if (glfwGetKey(window, GLFW_KEY_R) == GLFW_RELEASE) {
+        rKeyPressed = false;
+    }
+    if (glfwGetKey(window, GLFW_KEY_P) == GLFW_PRESS && !pKeyPressed) {
+        if(isPaused){
+            velocityX = velocityXsaved;
+            velocityY = velocityYsaved;
+            gravity= gravitySaved;
+            isPaused= false;
+        }
+        else{
+            velocityXsaved = velocityX;
+            velocityYsaved = velocityY;
+            gravitySaved = gravity;
+            velocityX =0;
+            velocityY =0;
+            gravity =0;
+            isPaused = true;
+        }
+        pKeyPressed = true;
+    }
+    if (glfwGetKey(window, GLFW_KEY_P) == GLFW_RELEASE) {
+        pKeyPressed = false;
+    }
+    if (glfwGetKey(window, GLFW_KEY_H) == GLFW_PRESS && !hKeyPressed) {
+        std::cout << "Controls:\n";
+        std::cout << "Press S to toggle shading mode (Gouraud/Phong).\n";
+        std::cout << "Press O to toggle lighting components (ambient, diffuse, specular).\n";
+        std::cout << "Press L to toggle light position (fixed/object-bound).\n";
+        std::cout << "Press M to toggle material (plastic/metallic).\n";
+        std::cout << "Press Z to zoom in, W to zoom out.\n";
+        std::cout << "Press T to toggle rendering mode (shaded/wireframe/textured).\n";
+        std::cout << "Press I to switch texture image.\n";
+        std::cout << "Press R to reset ball position.\n";
+        std::cout << "Press P to pause/unpause.\n";
+        std::cout << "Press Q to quit.\n";
+
+        hKeyPressed = true;
+    }
+    if (glfwGetKey(window, GLFW_KEY_H) == GLFW_RELEASE) {
+        hKeyPressed = false; 
+    }
 }
