@@ -12,6 +12,10 @@ float velocityXsaved, velocityYsaved, gravitySaved = 0;
 bool isPaused= false;
 // Rendering mode
 bool isWireframe = false;
+enum RenderMode { WIREFRAME, SHADED, TEXTURED };
+RenderMode renderMode = SHADED;
+
+int currentTextureIndex = 0;
 
 // Colors
 bool isRed = true;
@@ -76,21 +80,24 @@ void main()
     Normal = mat3(transpose(inverse(model))) * normal;
     TexCoord = texCoord;
 
-    vec3 norm = normalize(Normal);
-    vec3 lightDir = normalize(-lightDirection);
-    vec3 viewDir = normalize(-FragPos);  // camera at origin
+    if (useGouraud) {
+        vec3 norm = normalize(Normal);
+        vec3 lightDir = normalize(-lightDirection);
+        vec3 viewDir = normalize(-FragPos);  // camera at origin
 
-    vec3 ambient = toggleAmbient ? vec3(0.1) : vec3(0.0);
-    vec3 diffuse = toggleDiffuse ? max(dot(norm, lightDir), 0.0) * vec3(0.6) : vec3(0.0);
-    vec3 reflectDir = reflect(-lightDir, norm);
-    float spec = toggleSpecular ? pow(max(dot(viewDir, reflectDir), 0.0), shininess) : 0.0;
-    vec3 specular = spec * vec3(0.8);
+        vec3 ambient = toggleAmbient ? vec3(0.1) : vec3(0.0);
+        vec3 diffuse = toggleDiffuse ? max(dot(norm, lightDir), 0.0) * vec3(0.6) : vec3(0.0);
+        vec3 reflectDir = reflect(-lightDir, norm);
+        float spec = toggleSpecular ? pow(max(dot(viewDir, reflectDir), 0.0), shininess) : 0.0;
+        vec3 specular = spec * vec3(0.8);
 
-    gouraudColor = ambient + diffuse + specular;
+        gouraudColor = ambient + diffuse + specular;
+    }
 
     gl_Position = projection * view * model * vec4(position, 1.0);
 }
 )glsl";
+
 
 const char* fragmentShaderSource = R"glsl(
 #version 330 core
@@ -114,7 +121,8 @@ uniform bool useTexture;
 void main()
 {
     if (useGouraud) {
-        FragColor = vec4(gouraudColor, 1.0);
+        vec3 baseColor = useTexture ? texture(texture1, TexCoord).rgb : vec3(1.0);
+        FragColor = vec4(baseColor * gouraudColor, 1.0);
     } else {
         vec3 norm = normalize(Normal);
         vec3 lightDir = normalize(-lightDirection);
@@ -126,12 +134,14 @@ void main()
         float spec = toggleSpecular ? pow(max(dot(viewDir, reflectDir), 0.0), shininess) : 0.0;
         vec3 specular = spec * vec3(0.8);
 
-        vec3 result = ambient + diffuse + specular;
+        vec3 lighting = ambient + diffuse + specular;
         vec3 baseColor = useTexture ? texture(texture1, TexCoord).rgb : vec3(1.0);
-        FragColor = vec4(baseColor * result, 1.0);
+
+        FragColor = vec4(baseColor * lighting, 1.0);
     }
 }
 )glsl";
+
 
 // Function declarations
 void createShader();
@@ -140,6 +150,7 @@ void drawSphere(const glm::mat4& model, const glm::mat4& view, const glm::mat4& 
 void processInput(GLFWwindow* window);
 void mouseButtonCallback(GLFWwindow* window, int button, int action, int mods);
 void scrollCallback(GLFWwindow* window, double xoffset, double yoffset);
+GLuint loadPPMTexture(const char* filename);
 
 int main() {
     // Initialize GLFW
@@ -159,9 +170,6 @@ int main() {
     }
     glfwMakeContextCurrent(window);
 
-    // Set callbacks
-    glfwSetMouseButtonCallback(window, mouseButtonCallback);
-    glfwSetScrollCallback(window, scrollCallback);
 
     // Load GLAD
     if (!gladLoadGLLoader((GLADloadproc)glfwGetProcAddress)) {
@@ -177,67 +185,87 @@ int main() {
     glCullFace(GL_BACK);
     glFrontFace(GL_CCW);
 
+    // Compile and link shaders
     createShader();
+
+    // Generate sphere mesh
     generateSphere(0.5f, 40, 40);
 
-    // Setup view and projection matrices
-    glm::mat4 projection = glm::perspective(glm::radians(45.0f), float(WIDTH)/HEIGHT, 0.1f, 100.0f);
+    // Load PPM textures
+    GLuint texture1 = loadPPMTexture("basketball.ppm");
+    GLuint texture2 = loadPPMTexture("earth.ppm");
+
+    // Setup projection matrix
+    glm::mat4 projection = glm::perspective(glm::radians(45.0f), float(WIDTH) / HEIGHT, 0.1f, 100.0f);
 
     while (!glfwWindowShouldClose(window)) {
         processInput(window);
 
+        // Apply gravity and motion
         velocityY += gravity;
         posY += velocityY;
         posX += velocityX;
 
-        // Bounce on bottom boundary
         if (posY <= -0.9f) {
             posY = -0.9f;
             velocityY *= -damping;
         }
 
+        // Clear buffers
         glClearColor(0.2f, 0.2f, 0.25f, 1.0f);
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
-        // Camera/view matrix (fixed camera at z=3 looking at origin)
-        glm::mat4 view = glm::lookAt(glm::vec3(0, 0, 3 / zoom), glm::vec3(0,0,0), glm::vec3(0,1,0));
+        // Camera view
+        glm::mat4 view = glm::lookAt(glm::vec3(0, 0, 3.0f / zoom), glm::vec3(0, 0, 0), glm::vec3(0, 1, 0));
 
-        // Model matrix with translation based on posX and posY
+        // Model transformation
         glm::mat4 model = glm::mat4(1.0f);
         model = glm::translate(model, glm::vec3(posX, posY, 0.0f));
 
-        // Use shader program
+        // Light direction
+        glm::vec3 lightDir = lightAttachedToObject ? glm::vec3(model * glm::vec4(0.0f, 0.0f, 1.0f, 0.0f)) : glm::vec3(0.0f, 0.0f, 1.0f);
+
+        // Activate shader
         glUseProgram(shaderProgram);
 
         // Set uniforms
-        glUniform1i(glGetUniformLocation(shaderProgram, "useGouraud"), useGouraud ? 1 : 0);
+        glUniformMatrix4fv(glGetUniformLocation(shaderProgram, "model"), 1, GL_FALSE, glm::value_ptr(model));
+        glUniformMatrix4fv(glGetUniformLocation(shaderProgram, "view"), 1, GL_FALSE, glm::value_ptr(view));
+        glUniformMatrix4fv(glGetUniformLocation(shaderProgram, "projection"), 1, GL_FALSE, glm::value_ptr(projection));
+        glUniform3fv(glGetUniformLocation(shaderProgram, "lightDirection"), 1, glm::value_ptr(lightDir));
+        glUniform1f(glGetUniformLocation(shaderProgram, "shininess"), useMetallic ? 128.0f : 32.0f);
         glUniform1i(glGetUniformLocation(shaderProgram, "toggleAmbient"), toggleAmbient ? 1 : 0);
         glUniform1i(glGetUniformLocation(shaderProgram, "toggleDiffuse"), toggleDiffuse ? 1 : 0);
         glUniform1i(glGetUniformLocation(shaderProgram, "toggleSpecular"), toggleSpecular ? 1 : 0);
-        glUniform1f(glGetUniformLocation(shaderProgram, "shininess"), useMetallic ? 128.0f : 32.0f);
-        glUniform1i(glGetUniformLocation(shaderProgram, "useTexture"), 0); // no texture by default
+        glUniform1i(glGetUniformLocation(shaderProgram, "useGouraud"), useGouraud ? 1 : 0);
+        glUniform1i(glGetUniformLocation(shaderProgram, "useTexture"), renderMode == TEXTURED ? 1 : 0);
 
-        // Light direction uniform
-        glm::vec3 lightDir = lightAttachedToObject ? glm::vec3(model * glm::vec4(0.0, 0.0, 1.0, 0.0)) : glm::vec3(0.0, 0.0, 1.0);
-        glUniform3fv(glGetUniformLocation(shaderProgram, "lightDirection"), 1, glm::value_ptr(lightDir));
+        // Bind appropriate texture if in textured mode
+        if (renderMode == TEXTURED) {
+            glActiveTexture(GL_TEXTURE0);
+            GLuint texID = currentTextureIndex == 0 ? texture1 : texture2;
+            glBindTexture(GL_TEXTURE_2D, texID);
+            glUniform1i(glGetUniformLocation(shaderProgram, "texture1"), 0);
+        }
 
+        // Draw with correct mode
+        if (renderMode == WIREFRAME) {
+            glPolygonMode(GL_FRONT_AND_BACK, GL_LINE);
+        } else {
+            glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
+        }
 
-    // Set matrices
-    glUniformMatrix4fv(glGetUniformLocation(shaderProgram, "model"), 1, GL_FALSE, glm::value_ptr(model));
-    glUniformMatrix4fv(glGetUniformLocation(shaderProgram, "view"), 1, GL_FALSE, glm::value_ptr(view));
-    glUniformMatrix4fv(glGetUniformLocation(shaderProgram, "projection"), 1, GL_FALSE, glm::value_ptr(projection));
+        drawSphere(model, view, projection);
 
-    // Draw sphere
-    drawSphere(model, view, projection);
+        glfwSwapBuffers(window);
+        glfwPollEvents();
+    }
 
-    glfwSwapBuffers(window);
-    glfwPollEvents();
+    glfwDestroyWindow(window);
+    glfwTerminate();
+    return 0;
 }
 
-glfwDestroyWindow(window);
-glfwTerminate();
-return 0;
-}
 
 void createShader() {
 unsigned int vertexShader = glCreateShader(GL_VERTEX_SHADER);
@@ -304,28 +332,27 @@ glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, sphereEBO);
 glBufferData(GL_ELEMENT_ARRAY_BUFFER, indices.size() * sizeof(unsigned int), &indices[0], GL_STATIC_DRAW);
 
 GLsizei stride = 8 * sizeof(float);
-glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, stride, (void*)0); // position
+// layout: position (3), normal (3), texcoord (2)
+glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 8 * sizeof(float), (void*)0);
 glEnableVertexAttribArray(0);
-glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, stride, (void*)(3 * sizeof(float))); // normal
+
+glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, 8 * sizeof(float), (void*)(3 * sizeof(float)));
 glEnableVertexAttribArray(1);
-glVertexAttribPointer(2, 2, GL_FLOAT, GL_FALSE, stride, (void*)(6 * sizeof(float))); // texCoord
+
+glVertexAttribPointer(2, 2, GL_FLOAT, GL_FALSE, 8 * sizeof(float), (void*)(6 * sizeof(float)));
 glEnableVertexAttribArray(2);
+
 
 glBindVertexArray(0);
 }
 
 void drawSphere(const glm::mat4& model, const glm::mat4& view, const glm::mat4& projection) {
 glBindVertexArray(sphereVAO);
-glPolygonMode(GL_FRONT_AND_BACK, isWireframe ? GL_LINE : GL_FILL);
+glPolygonMode(GL_FRONT_AND_BACK, renderMode==WIREFRAME ? GL_LINE : GL_FILL);
 glDrawElements(GL_TRIANGLES, indexCount, GL_UNSIGNED_INT, 0);
 glBindVertexArray(0);
 }
 
-// Mouse click: toggle wireframe
-void mouseButtonCallback(GLFWwindow* window, int button, int action, int mods) {
-if (button == GLFW_MOUSE_BUTTON_RIGHT && action == GLFW_PRESS)
-isWireframe = !isWireframe;
-}
 
 // Scroll: zoom
 void scrollCallback(GLFWwindow* window, double xoffset, double yoffset) {
@@ -333,6 +360,49 @@ zoom *= (1.0f + yoffset * 0.1f);
 if (zoom < 0.1f) zoom = 0.1f;
 if (zoom > 10.0f) zoom = 10.0f;
 }
+
+GLuint loadPPMTexture(const char* filename) {
+    std::ifstream file(filename);
+    if (!file) {
+        std::cerr << "Failed to open " << filename << "\n";
+        return 0;
+    }
+
+    std::string magic;
+    file >> magic;
+    if (magic != "P3") {
+        std::cerr << "Invalid PPM format (must be ASCII P3): " << magic << "\n";
+        return 0;
+    }
+
+    int width, height, maxval;
+    file >> width >> height >> maxval;
+
+    std::vector<unsigned char> data;
+    data.reserve(width * height * 3);
+    int r, g, b;
+    while (file >> r >> g >> b) {
+        data.push_back(static_cast<unsigned char>(r));
+        data.push_back(static_cast<unsigned char>(g));
+        data.push_back(static_cast<unsigned char>(b));
+    }
+
+    GLuint texture;
+    glGenTextures(1, &texture);
+    glBindTexture(GL_TEXTURE_2D, texture);
+
+    // Texture parameters
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+
+    // Upload to GPU
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, width, height, 0, GL_RGB, GL_UNSIGNED_BYTE, data.data());
+    glGenerateMipmap(GL_TEXTURE_2D);
+
+    return texture;
+}
+
+
 
 // Keyboard input
 void processInput(GLFWwindow* window) {
@@ -398,7 +468,15 @@ if (glfwGetKey(window, GLFW_KEY_Q) == GLFW_PRESS)
 
     // Toggle rendering mode (e.g., shaded, wireframe, textured)
     if (glfwGetKey(window, GLFW_KEY_T) == GLFW_PRESS && !tKeyPressed) {
-        isWireframe = !isWireframe;
+        if(renderMode==WIREFRAME){
+            renderMode=SHADED;
+        }
+        else if (renderMode==SHADED){
+            renderMode=TEXTURED;
+        }
+        else{
+            renderMode= WIREFRAME;
+        }
         tKeyPressed = true;
     }
     if (glfwGetKey(window, GLFW_KEY_T) == GLFW_RELEASE)
@@ -406,8 +484,7 @@ if (glfwGetKey(window, GLFW_KEY_Q) == GLFW_PRESS)
 
     // Toggle between different texture images
     if (glfwGetKey(window, GLFW_KEY_I) == GLFW_PRESS && !iKeyPressed) {
-        //currentTextureIndex = (currentTextureIndex + 1) % totalTextureCount;
-        //updateTexture(currentTextureIndex); // You should define this
+        currentTextureIndex = (currentTextureIndex + 1) % 2;
         iKeyPressed = true;
     }
     if (glfwGetKey(window, GLFW_KEY_I) == GLFW_RELEASE)
