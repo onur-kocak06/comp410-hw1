@@ -8,8 +8,8 @@ import argparse
 import scipy.sparse
 
 # ========== DEFAULT CONFIG ==========
-DEFAULT_OBJ_PATH = "model3.obj"
-DEFAULT_LANDMARK_MAP = "landmark_vertex_map3.json"
+DEFAULT_OBJ_PATH = "altmodel.obj"
+DEFAULT_LANDMARK_MAP = "landmark_vertex_map.json"
 DEFAULT_OUTPUT_DIR = "outputs"
 DEFAULT_IMAGE_DIR = "images"
 

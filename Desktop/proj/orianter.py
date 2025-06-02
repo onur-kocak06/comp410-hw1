@@ -1,16 +1,42 @@
-# preprocess_model_reference.py
-import cv2, mediapipe as mp, json
+import math
 
-image = cv2.imread("photo3a.png")
-h, w = image.shape[:2]
+def rotate_y(x, y, z, theta_deg):
+    theta = math.radians(theta_deg)
+    cos_t = math.cos(theta)
+    sin_t = math.sin(theta)
+    x_new = x * cos_t + z * sin_t
+    z_new = -x * sin_t + z * cos_t
+    return x_new, y, z_new
+def rotate_x(x, y, z, theta_deg):
+    theta = math.radians(theta_deg)
+    cos_t = math.cos(theta)
+    sin_t = math.sin(theta)
+    y_new = y * cos_t - z * sin_t
+    z_new = y * sin_t + z * cos_t
+    return x, y_new, z_new
+def rotate_z(x, y, z, theta_deg):
+    theta = math.radians(theta_deg)
+    cos_t = math.cos(theta)
+    sin_t = math.sin(theta)
+    x_new = x * cos_t - y * sin_t
+    y_new = x * sin_t + y * cos_t
+    return x_new, y_new, z
 
-with mp.solutions.face_mesh.FaceMesh(static_image_mode=True) as face_mesh:
-    results = face_mesh.process(cv2.cvtColor(image, cv2.COLOR_BGR2RGB))
-    landmark_data = results.multi_face_landmarks[0].landmark
+with open("model.obj", "r") as f:
+    lines = f.readlines()
 
-ref_landmarks = {
-    idx: [(lm.x - 0.5), -(lm.y - 0.5), -lm.z]
-    for idx, lm in enumerate(landmark_data)
-}
-with open("reference_landmarks.json", "w") as f:
-    json.dump(ref_landmarks, f)
+theta_degy = -25
+theta_degx = -25
+theta_degz = -15
+
+with open("model_rotated.obj", "w") as f:
+    for line in lines:
+        if line.startswith("v "):
+            parts = line.strip().split()
+            x, y, z = map(float, parts[1:4])
+            x, y, z = rotate_y(x, y, z, theta_degy)
+            x, y, z = rotate_x(x, y, z, theta_degx)
+            x, y, z = rotate_z(x, y, z, theta_degz)
+            f.write(f"v {x:.6f} {y:.6f} {z:.6f}\n")
+        else:
+            f.write(line)
