@@ -1,34 +1,23 @@
-import pyvista as pv
-import trimesh
+from vedo import Mesh, Plotter, Video
 import numpy as np
 
-# Load the mesh using trimesh
-mesh = trimesh.load('altmodel.obj', force='mesh')
+def render_rotating_video(obj_path, output_video="rotation.mp4", duration=5, fps=30):
+    obj = Mesh(obj_path)
+    obj.c('w')  # ensure white edges if needed
 
-# Indices of vertices to highlight
-highlightvert = [5710, 2965, 480, 5264, 2843,3818]  # Example indices
+    n_frames = duration * fps
+    video = Video(name=output_video, duration=duration, fps=fps)
 
-# Extract coordinates of highlighted vertices
-highlight_coords = mesh.vertices[highlightvert]
+    plotter = Plotter(offscreen=True, bg='white', size=(800, 800))
+    plotter.show(obj, resetcam=True)
 
-# Print their coordinates
-print("Highlighted Vertex Coordinates:")
-for idx, coord in zip(highlightvert, highlight_coords):
-    print(f"Index {idx}: {coord}")
+    for i in range(n_frames):
+        obj.rotateY(360 / n_frames)
+        plotter.show(obj, interactive=False)
+        video.addFrame(plotter.screenshot(asarray=True))
 
-# Convert trimesh to PyVista mesh
-faces = np.hstack([np.full((len(mesh.faces), 1), 3), mesh.faces]).astype(np.int_)
-pv_mesh = pv.PolyData(mesh.vertices, faces)
+    video.close()
+    plotter.close()
 
-# Create plotter
-plotter = pv.Plotter()
-plotter.add_mesh(pv_mesh, color='lightgray', opacity=0.5, show_edges=True)
-
-# Add red spheres and index labels at highlighted vertices
-for idx, point in zip(highlightvert, highlight_coords):
-    sphere = pv.Sphere(radius=0.005 * mesh.scale, center=point)
-    plotter.add_mesh(sphere, color='red')
-    plotter.add_point_labels([point], [str(idx)], font_size=10, point_color='blue', point_size=5)
-
-# Show plot
-plotter.show(title='Highlighted Vertices in altmodel.obj')
+# Usage
+render_rotating_video("outputs/colored_ulker.obj")

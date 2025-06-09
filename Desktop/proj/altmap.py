@@ -93,8 +93,8 @@ def visualize(vertices, mapped_vertex_indices, manual_vertex_indices):
     plotter.show(title="3D Model Vertices and Landmark Mappings")
 
 def main():
-    vertices = load_obj_vertices('altmodel.obj')
-    image_path = "photoa.png"  # Replace with your own image path
+    vertices = load_obj_vertices('textured.obj')
+    image_path = "textured.png"  # Replace with your own image path
     media_pipe_landmarks = get_face_landmarks(image_path)
     if media_pipe_landmarks is None:
         print("No landmarks found, exiting.")
@@ -127,7 +127,7 @@ def main():
         mapped_vertex_indices.append(idx)
     landmark_to_vertex_map_clean = {int(k): int(v) for k, v in landmark_to_vertex_map.items()}
 
-    with open("landmark_to_vertex_map.json", "w") as f:
+    with open("textured_landmark_to_vertex_map.json", "w") as f:
         json.dump(landmark_to_vertex_map_clean, f, indent=2)
     print("\nSaved landmark_to_vertex_map.json")
 
